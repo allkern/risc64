@@ -1,3 +1,5 @@
+#pragma once
+
 #include <functional>
 #include <iostream>
 #include <sstream>
@@ -13,6 +15,20 @@
 // Macro defining how many CPU threads might be created
 #define CPU_THREAD_COUNT 8
 
+// Define this so the control window CPU controls work
+#define CPU_STEPPING_ENABLED
+
+// Will probably remove this in the future
+#define ALU_OPERATION_COUNT 0xc
+
+// Aliases
+#define dest_r this->gpr[exec.dest]
+#define operand0_r this->gpr[exec.operand0]
+#define operand1_r this->gpr[exec.operand1]
+#define dest_c this->exec.dest
+#define operand0_c this->exec.operand0
+#define operand1_c this->exec.operand1
+
 namespace machine {
 	// Debug only
     template <class T> std::string bin(T v) {
@@ -24,30 +40,55 @@ namespace machine {
     }
 
     // Thread-safe registers
-    std::array <std::atomic<u64>, CPU_THREAD_COUNT> tsr = { 0 };
+    std::array <std::atomic<u64>, CPU_THREAD_COUNT> tsr;
 
-    template <const int thread_id = 0> class cpu : public device {
+    class cpu : public device {
+    public:
+        // Register array type aliases
+        typedef std::array <u64, 32> gpr_array_t;
+        typedef std::array <float, 16> fpr_array_t;
+
+        // This is so we don't need accessor functions
+        friend class control_window;
+
+    private:
+        // These are pretty self explanatory
+#ifdef CPU_STEPPING_ENABLED
+        std::atomic<bool> step, stepping_enabled;
+#endif
+        // Thread ID
+        size_t thread_id = 0;
+
         // GPRs
-        std::array <u64, 32> gpr = { 0ull };
+        gpr_array_t gpr = { 0ull };
 
         // Floating Point Registers
-        std::array <float, 16> fpr = { +0.0f };
+        fpr_array_t fpr = { +0.0f };
 
         // Thread-local register
-        std::atomic<u64>& tlr = machine::tsr[thread_id];
+        std::atomic<u64>* tlr = nullptr;
 
 		// Program Counter
         u64 pc = 0ull;
+
+        // Stack Pointer
+		u64 sp = 0ull;
 
 		// Status Register
 		u16 sr = 0ull;
 
         // PC Increment
         size_t pci = 0;
-        
-        // sr = 00cz 0000 0000 00cz
-        //
 
+        // This allows the programmer to stop execution of the emulator
+        bool is_halted = false;
+
+        // Execution state
+        decoder::instruction exec;
+        
+        // sr = 0000 0000 0000 tncz
+
+        // SR flags
         enum flags {
             zf = 0b0000000000000001, // Zero flag
             cf = 0b0000000000000010, // Carry flag
@@ -55,75 +96,135 @@ namespace machine {
             tf = 0b0000000000001000  // IRQ (interrupT) flag
         };
 
+        // Flag ops
         void set_flags(u16 f) { sr |= f; }
         void reset_flags(u16 f) { sr &= (~f); }
         bool test_flag(u16 f) { return (sr & f); }
 
+        // Tests the execution condition
         bool is_executed() {
             switch (exec.cond) {
-                case decoder::condition::nz: if ( test_flag(flags::zf)) return false;
-                case decoder::condition::nc: if ( test_flag(flags::cf)) return false;
-                case decoder::condition::p : if ( test_flag(flags::nf)) return false;
-                case decoder::condition::z : if (!test_flag(flags::zf)) return false;
-                case decoder::condition::c : if (!test_flag(flags::cf)) return false;
-                case decoder::condition::n : if (!test_flag(flags::nf)) return false;
+                case decoder::condition::nz: if ( test_flag(flags::zf)) { return false; } break;
+                case decoder::condition::nc: if ( test_flag(flags::cf)) { return false; } break;
+                case decoder::condition::p : if ( test_flag(flags::nf)) { return false; } break;
+                case decoder::condition::z : if (!test_flag(flags::zf)) { return false; } break;
+                case decoder::condition::c : if (!test_flag(flags::cf)) { return false; } break;
+                case decoder::condition::n : if (!test_flag(flags::nf)) { return false; } break;
                 case decoder::condition::nv: return false;
             }
             return true;
         }
 
-        struct alu {
-            std::array <std::function<u64(u64&, u64&)>, 0x10> operation = {
-                [] (u64& s0, u64& s1) -> u64 { return s0 + s1; },
-                [] (u64& s0, u64& s1) -> u64 { return s0 - s1; },
-                [] (u64& s0, u64& s1) -> u64 { return s0 * s1; },
-                [] (u64& s0, u64& s1) -> u64 { return s0 / s1; },
-                [] (u64& s0, u64& s1) -> u64 { return s0 & s1; },
-                [] (u64& s0, u64& s1) -> u64 { return s0 | s1; },
-                [] (u64& s0, u64& s1) -> u64 { return s0 ^ s1; },
-                [] (u64& s0, u64& s1) -> u64 { return ~s0; },
-            };
-
-            static void op_u3(u64& d, u64& s0, u64& s1, std::function<u64(u64&, u64&)> op, size_t operand_size) {
-                u64 res = op(s0, s1);
-                if (res > 0) reset_flags(flags::nf);
-                if (res == 0) { set_flags(flags::zf); };
-                if (res & (0xffffffffffffffffull << operand_size)) set_flags(flags::cf);
-                if (sign) { if (res < 0) { set_flags(flags::nf); }; }
-                if (res&&)
-                d = (operand_t)res;
-            }
-            static void op_s3(u64& d, u64& s0, u64& s1, std::function<u64(u64&, u64&)> op) {
-                s64 res = (s64)op(s0, s1);
-                if (res > 0) reset_flags(flags::nf);
-                if (res == 0) { set_flags(flags::zf); };
-                if (res < 0) { set_flags(flags::nf); };
-                if constexpr (std::is_same<operand_t, u8 >::value) { if (res & 0x80              ) { set_flags(flags::nf); }; if (res & 0xff00            ) set_flags(flags::cf); }
-                if constexpr (std::is_same<operand_t, u16>::value) { if (res & 0x8000            ) { set_flags(flags::nf); }; if (res & 0xffff0000        ) set_flags(flags::cf); }
-                if constexpr (std::is_same<operand_t, u32>::value) { if (res & 0x80000000        ) { set_flags(flags::nf); }; if (res & 0xffffffff00000000) set_flags(flags::cf); }
-                if constexpr (std::is_same<operand_t, u64>::value) { if (res & 0x8000000000000000) { set_flags(flags::nf); } }
-                d = (operand_t)res;
-            }
+        // The ID of an operation is the index on this array
+        std::array <std::function<u64(u64&, u64&)>, ALU_OPERATION_COUNT> alu_binary_operation = {
+            [] (u64& s0, u64& s1) -> u64 { return s0 + s1; },               // add{b, w, d, q}{z, nz, c, nc, p, n}{u, s}
+            [] (u64& s0, u64& s1) -> u64 { return s0 - s1; },
+            [] (u64& s0, u64& s1) -> u64 { return s1 - s0; },
+            [] (u64& s0, u64& s1) -> u64 { return s0 * s1; },
+            [] (u64& s0, u64& s1) -> u64 { return s0 / s1; },
+            [] (u64& s0, u64& s1) -> u64 { return s1 / s0; },
+            [] (u64& s0, u64& s1) -> u64 { return s0 % s1; },
+            [] (u64& s0, u64& s1) -> u64 { return s0 & s1; },
+            [] (u64& s0, u64& s1) -> u64 { return s0 | s1; },
+            [] (u64& s0, u64& s1) -> u64 { return s0 ^ s1; },
+            [] (u64& s0, u64& s1) -> u64 { return s0 << s1; },              // sl{b, w, d, q} sldwns shift left double word on negative signed
+            [] (u64& s0, u64& s1) -> u64 { return s0 >> s1; },
         };
 
-        decoder::instruction exec;
+        // Same as alu_binary_operation
+        std::array <std::function<u64(u64&)>, 0x4> alu_unary_operation = {
+            [] (u64& s) -> u64 { return ~s; },
+            [] (u64& s) -> u64 { return s+1; },
+            [] (u64& s) -> u64 { return s-1; },
+            [] (u64& s) -> u64 { return std::llabs(s); }
+        };
 
-    public:
-        cpu() : device("arch64_cpu" + std::to_string(thread_id), 0xfffffffffffffffe, 1, 1, device::access_mode::a_none) {};
-        
-        u64& get_register(size_t w) { return gpr[w]; }
-        u64& get_pc() { return pc; }
-        
+        inline u64 mask(u64& v, size_t b) {
+            return v & (~((0xffffffffffffffffull * !(b == 64)) << b));
+        }
 
-        void fetch_decode() {
-            exec.opcode = bus::rq(pc);
-            exec.extj = bus::rw(pc + 8);
-            pci = decoder::decode(exec);
+        void apply_flags(u64 res, size_t size, bool sign) {
+            size_t bits = decoder::get_operand_sizeof(size) * 8;
+            u64 masked = mask(res, bits);
+            if (masked > 0) reset_flags(flags::nf);
+            if (masked == 0) set_flags(flags::zf); else reset_flags(flags::zf);
+            if (res & (0xffffffffffffffffull << bits)) set_flags(flags::cf);
+            if (sign) {
+                if (masked & (0x80ull << bits - 8)) { set_flags(flags::nf); }
+            }
+        }
+
+        // ALU operation t_operand overload
+        void alu_op(u64& d, u64& s0, u64& s1, std::function<u64(u64&, u64&)>& op, size_t operand_size, bool sign) {
+            d = op(s0, s1);
+            apply_flags(d, operand_size, sign);
+        }
+
+        // ALU operation d_operand overload
+        void alu_op(u64& d, u64& s, std::function<u64(u64&, u64&)>& op, size_t operand_size, bool sign) {
+            d = op(d, s);
+            apply_flags(d, operand_size, sign);
+        }
+
+        // ALU operation s_operand_register overload
+        void alu_op(u64& d, std::function<u64(u64&)>& op, size_t operand_size, bool sign) {
+            d = op(d);
+            apply_flags(d, operand_size, sign);
         }
 
 
+    public:
+        // Default constructor
+        cpu(size_t thread_id = 0) :
+            device("cpu" + std::to_string(thread_id), 0xfffffffffffffffe, 1, thread_id, device::access_mode::a_none),
+            tlr(&tsr[thread_id]),
+            thread_id(thread_id) {
+                step = false;
+                stepping_enabled = false;
+        };
+
+        // Get Stack Pointer
+        u64& get_sp() { return sp; }
+
+        // Get GPRs array
+        gpr_array_t& get_gpr_array() { return gpr; }
+
+        // Get FPRs array
+        fpr_array_t& get_fpr_array() { return fpr; }
+    
+        // Get Program Counter
+        u64& get_pc() { return pc; }
+
+        // Get Status Register
+        u16& get_sr() { return sr; }
+
+        // Get PC Increment
+        size_t& get_pci() { return pci; }
+
+        // Get this CPU's thread ID
+        size_t& get_thread_id() { return thread_id; }
+
+        // Query whether the CPU is halted or not
+        bool& cpu_halted() { return is_halted; }
+
+        // Get a pointer to the execution state struct
+        decoder::instruction* get_execution_state() { return &exec; }
+
+        // Read an instruction from the bus and decode it
+        void fetch_decode() {
+            exec.opcode = bus::read(pc, 8);
+            exec.ext64 = bus::read(pc+8, 2);
+            pci = decoder::decode(exec);
+        }
+
+        // Execute the decoded instruction
         void execute() {
             using namespace decoder;
+
+#ifdef CPU_STEPPING_ENABLED
+            if (stepping_enabled) { step = true; }
+            while (step) {}
+#endif
 
             bool jump = false;
             if (!is_executed()) { goto end; }
@@ -147,34 +248,100 @@ namespace machine {
                                     gpr[exec.dest] = exec.target;
                                 }
                             }
-                        }
+                        } break;
+                        case instruction_type::no_operand: {
+                            switch (exec.id) {
+                                case 0xfe: {
+                                    is_halted = true;
+                                } break;
+                            }
+                        } break;
                     }
-                }
+                } break;
                 case instruction_type::alu: {
                     switch (get_subclass(exec)) {
                         case instruction_type::t_operand_register_all: {
-                            auto func = alu::operation[((int)exec.operand_sign * 8) + exec.id];
-                            if (exec.operand_sign) {
-                                switch (exec.operand_size) {
-                                    case operand_size::hw: alu::op_s3<u8 >(gpr[exec.dest], gpr[exec.operand0], gpr[exec.operand1], func); break;
-                                    case operand_size::w : alu::op_s3<u16>(gpr[exec.dest], gpr[exec.operand0], gpr[exec.operand1], func); break;
-                                    case operand_size::dw: alu::op_s3<u32>(gpr[exec.dest], gpr[exec.operand0], gpr[exec.operand1], func); break;
-                                    case operand_size::qw: alu::op_s3<u64>(gpr[exec.dest], gpr[exec.operand0], gpr[exec.operand1], func); break;
+                            auto func = alu_binary_operation[exec.id % alu_binary_operation.size()];
+                            alu_op(gpr[exec.dest], gpr[exec.operand0], gpr[exec.operand1], func, exec.operand_size, (bool)exec.operand_sign);
+                        } break;
+                        case instruction_type::t_operand_single_const: {
+                            auto func = alu_binary_operation[exec.id % alu_binary_operation.size()];
+                            u64 c = exec.operand1;
+                            alu_op(gpr[exec.dest], gpr[exec.operand0], c, func, exec.operand_size, (bool)exec.operand_sign);
+                        } break;
+                        case instruction_type::d_operand_register_all: {
+                            // Implement cmp and test
+                            if (exec.id >= ALU_OPERATION_COUNT) {
+                                switch (exec.id) {
+                                    case ALU_OPERATION_COUNT: {
+                                        apply_flags(gpr[exec.dest] - gpr[exec.operand0], exec.operand_size, (bool)exec.operand_sign);
+                                    } break;
+                                    case ALU_OPERATION_COUNT + 1: {
+                                        apply_flags(gpr[exec.dest] & (1ull << gpr[exec.operand0]), exec.operand_size, (bool)exec.operand_sign);
+                                    } break;
                                 }
+                                break;
                             }
-                            switch (exec.operand_size) {
-                                case operand_size::hw: alu::op_u3<u8 >(gpr[exec.dest], gpr[exec.operand0], gpr[exec.operand1], func); break;
-                                case operand_size::w : alu::op_u3<u16>(gpr[exec.dest], gpr[exec.operand0], gpr[exec.operand1], func); break;
-                                case operand_size::dw: alu::op_u3<u32>(gpr[exec.dest], gpr[exec.operand0], gpr[exec.operand1], func); break;
-                                case operand_size::qw: alu::op_u3<u64>(gpr[exec.dest], gpr[exec.operand0], gpr[exec.operand1], func); break;
+                            auto func = alu_binary_operation[exec.id % alu_binary_operation.size()];
+                            alu_op(gpr[exec.dest], gpr[exec.operand0], func, exec.operand_size, (bool)exec.operand_sign);
+                        } break;
+                        case instruction_type::d_operand_single_const: {
+                            // Implement cmp and test
+                            if (exec.id >= ALU_OPERATION_COUNT) {
+                                switch (exec.id) {
+                                    case ALU_OPERATION_COUNT: {
+                                        apply_flags(gpr[exec.dest] - operand0_c, exec.operand_size, (bool)exec.operand_sign);
+                                    } break;
+                                    case ALU_OPERATION_COUNT + 1: {
+                                        apply_flags(gpr[exec.dest] & (1ull << operand0_c), exec.operand_size, (bool)exec.operand_sign);
+                                    } break;
+                                }
+                                break;
                             }
-                        }
+                            auto func = alu_binary_operation[exec.id % alu_binary_operation.size()];
+                            u64 c = exec.operand0;
+                            alu_op(gpr[exec.dest], c, func, exec.operand_size, (bool)exec.operand_sign);
+                        } break;
+                        case instruction_type::s_operand_register: {
+                            auto func = alu_unary_operation[exec.id % alu_unary_operation.size()];
+                            alu_op(gpr[exec.dest], func, exec.operand_size, (bool)exec.operand_sign);
+                        } break;
                     }
-                }
+                } break;
+                case instruction_type::lsu: {
+                    switch (get_subclass(exec)) {
+                        case instruction_type::t_operand_register_all: {
+                            switch (exec.id) {
+                                case 0x00: {
+                                    dest_r = bus::read(operand0_r + operand1_r, decoder::get_operand_sizeof(exec.operand_size));
+                                } break;
+                            }
+                        } break;
+                        case instruction_type::d_operand_register_all: {
+                            switch (exec.id) {
+                                case 0x00: { dest_r = bus::read(operand0_r, decoder::get_operand_sizeof(exec.operand_size)); } break;
+                                case 0x01: { bus::write(operand0_r, dest_r, decoder::get_operand_sizeof(exec.operand_size)); } break;
+                            }
+                        } break;
+                    }
+                } break;
+                case instruction_type::bnj: {
+                    switch (get_subclass(exec)) {
+                        case instruction_type::s_operand_const: {
+                            switch (exec.id) {
+                                case 0x00: {
+                                    u64 v = operand0_c;
+                                    pc += (s16)mask(v, decoder::get_operand_sizeof(exec.operand_size)*8);
+                                    jump = true;
+                                } break;
+                            }
+                        } break;
+                    }
+                } break;
             }
 
-            end:
-            if (!jump) pc += pci;
+        end:
+            if (!jump) pc += pci; else jump = false;
         }
     };
 }

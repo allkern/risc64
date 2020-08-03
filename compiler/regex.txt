@@ -1,1 +1,0 @@
-((add|sub|mul|div|cmpxchg|hwo)((hw|sw|dw|qw|h|s|d|q)?(eq|c|p|neq|nc|n)?(u|s)?))[ \n\t]+(\*?r[[:digit:]]+([\+\-]0x[[:xdigit:]]+)?)[ \n\t]*(?:,[ \n\t]*\*?(r[[:digit:]])[ \n\t]*([\+\-]?0x[[:xdigit:]]+)?)*[ \n\t]*;

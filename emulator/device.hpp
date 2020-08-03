@@ -21,23 +21,22 @@ namespace machine {
 			a_all = a_r | a_w | a_x	// All access permissions
 		};
 
-	private:
+	protected:
 		// Physical bus base address
-		u64 base;
+		u64 base = 0;
 
 		// Bus allocation size
-		u64 size;
+		u64 size = 0;
 		
 		// Hardware ID
-		u16 hid;
+		u16 hid  = 0;
 
 		// A human-readable name for the device
-		std::string name;
+		std::string name = "";
 
 		// Specify access permissions for the device
-		access_mode access;
+		access_mode access = a_none;
 	
-	protected:
 		device() = default;
 		device(
 			std::string name,
@@ -53,14 +52,11 @@ namespace machine {
 		u64 get_hid() const { return hid; }
 		u8 get_access_mode() const { return access; }
 
+#ifdef DEBUG	
+		virtual const std::string& get_symbol(u64) { return ""; };
+#endif
 		virtual u64 translate(u64 addr) { return addr - base; };
-		virtual u8 rb(u64) {}
-		virtual u16 rw(u64) {}
-		virtual u32 rd(u64) {}
-		virtual u64 rq(u64) {}
-		virtual u8 wb(u64, u8) {}
-		virtual u16 ww(u64, u16) {}
-		virtual u32 wd(u64, u32) {}
-		virtual u64 wq(u64, u64) {}
+		virtual u64 read(u64, size_t) { return 0xffffffffffffffffull; };
+		virtual void write(u64, u64, size_t) {};
 	};
 }

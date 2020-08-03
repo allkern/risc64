@@ -5,6 +5,5 @@
 !.vscode/extensions.json
 
 # Ignore compiled binaries
-emulator/main
 compiler/assembler
 compiler/cc
