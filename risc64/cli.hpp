@@ -2,7 +2,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "../log.hpp"
+#include "log.hpp"
 
 namespace cli {
     std::vector <std::string> cli;

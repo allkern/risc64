@@ -75,7 +75,12 @@
         "ratio": "cpp",
         "set": "cpp",
         "xtree": "cpp",
-        "cinttypes": "cpp"
+        "cinttypes": "cpp",
+        "bit": "cpp",
+        "condition_variable": "cpp",
+        "numeric": "cpp",
+        "random": "cpp",
+        "shared_mutex": "cpp"
     },
     "C_Cpp.errorSquiggles": "Enabled"
 }

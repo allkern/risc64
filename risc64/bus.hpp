@@ -8,7 +8,7 @@
 #include "aliases.hpp"
 #include "devices/bios.hpp"
 
-#include "../log.hpp"
+#include "log.hpp"
 
 #define BUS_MAX_DEVICES 20
 
@@ -40,12 +40,12 @@ namespace machine {
                     end_addr = base_addr + d->get_size();
                 if ((addr >= base_addr) && (addr <= end_addr)) {
                     if (!(d->get_access_mode() & device::access_mode::a_w)) {
-                        // Invalid write on unwritable device, trigger ARCH64_SIGSEGV
+                        _log(warning, "Invalid write on device %s @ 0x%llx, addr = 0x%llx, size = 0x%llx (RISC64_SIGSEGV)", d->get_name().c_str(), base_addr, addr, size);
                     }
                     return d->write(addr, value, size);
                 }
             }
-            // Write on unmapped area, trigger ARCH64_ENOENT
+            _log(warning, "Write on unmapped memory, addr = 0x%llx, size = 0x%llx (RISC64_ENOENT)", addr, size);
         }
         
 

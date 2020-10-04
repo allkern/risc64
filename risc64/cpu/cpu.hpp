@@ -7,10 +7,11 @@
 #include <atomic>
 #include <array>
 
-#include "aliases.hpp"
+#include "../aliases.hpp"
+#include "../device.hpp"
+#include "../bus.hpp"
+
 #include "decoder.hpp"
-#include "device.hpp"
-#include "bus.hpp"
 
 // Macro defining how many CPU threads might be created
 #define CPU_THREAD_COUNT 8
@@ -46,7 +47,7 @@ namespace machine {
     public:
         // Register array type aliases
         typedef std::array <u64, 32> gpr_array_t;
-        typedef std::array <float, 16> fpr_array_t;
+        typedef std::array <float, 32> fpr_array_t;
 
         // This is so we don't need accessor functions
         friend class control_window;
@@ -97,9 +98,9 @@ namespace machine {
         };
 
         // Flag ops
-        void set_flags(u16 f) { sr |= f; }
-        void reset_flags(u16 f) { sr &= (~f); }
-        bool test_flag(u16 f) { return (sr & f); }
+        inline void set_flags(u16 f) { sr |= f; }
+        inline void reset_flags(u16 f) { sr &= (~f); }
+        inline bool test_flag(u16 f) { return (sr & f); }
 
         // Tests the execution condition
         bool is_executed() {
@@ -115,9 +116,9 @@ namespace machine {
             return true;
         }
 
-        // The ID of an operation is the index on this array
+        // The ID of an operation is its index on this array
         std::array <std::function<u64(u64&, u64&)>, ALU_OPERATION_COUNT> alu_binary_operation = {
-            [] (u64& s0, u64& s1) -> u64 { return s0 + s1; },               // add{b, w, d, q}{z, nz, c, nc, p, n}{u, s}
+            [] (u64& s0, u64& s1) -> u64 { return s0 + s1; },
             [] (u64& s0, u64& s1) -> u64 { return s0 - s1; },
             [] (u64& s0, u64& s1) -> u64 { return s1 - s0; },
             [] (u64& s0, u64& s1) -> u64 { return s0 * s1; },
@@ -127,7 +128,7 @@ namespace machine {
             [] (u64& s0, u64& s1) -> u64 { return s0 & s1; },
             [] (u64& s0, u64& s1) -> u64 { return s0 | s1; },
             [] (u64& s0, u64& s1) -> u64 { return s0 ^ s1; },
-            [] (u64& s0, u64& s1) -> u64 { return s0 << s1; },              // sl{b, w, d, q} sldwns shift left double word on negative signed
+            [] (u64& s0, u64& s1) -> u64 { return s0 << s1; },
             [] (u64& s0, u64& s1) -> u64 { return s0 >> s1; },
         };
 
@@ -179,8 +180,10 @@ namespace machine {
             device("cpu" + std::to_string(thread_id), 0xfffffffffffffffe, 1, thread_id, device::access_mode::a_none),
             tlr(&tsr[thread_id]),
             thread_id(thread_id) {
-                step = false;
-                stepping_enabled = false;
+        #ifdef CPU_STEPPING_ENABLED
+                step = true;
+                stepping_enabled = true;
+        #endif
         };
 
         // Get Stack Pointer
@@ -232,43 +235,41 @@ namespace machine {
             switch (get_class(exec)) {
                 case instruction_type::sys: {
                     switch (get_subclass(exec)) {
+                        case instruction_type::s_operand_register: {
+                            switch (exec.id) {
+                                case 0xfd: { size_t op = decoder::get_operand_sizeof(exec.operand_size); bus::write(sp, dest_r, op); sp += op; } break;
+                                case 0xfc: { size_t op = decoder::get_operand_sizeof(exec.operand_size); sp -= op; dest_r = bus::read(sp, op); } break;
+                            }
+                        } break;
                         case instruction_type::s_operand_const: {
-                            if (exec.id & 0x01) {
-                                if (exec.id & 0x02) {
-                                    switch (exec.id) {
-                                        // Special case: farj const64
-                                        // ccc1111011111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-                                        // b-------b-------b-------b-------b-------b-------b-------b-------b-------b------- 10 bytes
-                                        case 0xff: {
-                                            jump = true;
-                                            pc = exec.target;
-                                        }
-                                    }
-                                } else {
-                                    gpr[exec.dest] = exec.target;
-                                }
+                            switch (exec.id) {
+                                case 0xff: { jump = true; pc = exec.target; } break; // fj
+                                case 0xfe: { gpr[exec.dest] = exec.target; } break; // lrq
+                                case 0xfd: { size_t op = decoder::get_operand_sizeof(exec.operand_size); bus::write(sp, operand0_c, op); sp += op; } break;
                             }
                         } break;
                         case instruction_type::no_operand: {
                             switch (exec.id) {
-                                case 0xfe: {
-                                    is_halted = true;
-                                } break;
+                                case 0xfe: { is_halted = true; } break; // halt
                             }
                         } break;
                     }
                 } break;
+
+                // ALU Instruction Class
                 case instruction_type::alu: {
                     switch (get_subclass(exec)) {
                         case instruction_type::t_operand_register_all: {
                             auto func = alu_binary_operation[exec.id % alu_binary_operation.size()];
                             alu_op(gpr[exec.dest], gpr[exec.operand0], gpr[exec.operand1], func, exec.operand_size, (bool)exec.operand_sign);
                         } break;
+
                         case instruction_type::t_operand_single_const: {
                             auto func = alu_binary_operation[exec.id % alu_binary_operation.size()];
                             u64 c = exec.operand1;
                             alu_op(gpr[exec.dest], gpr[exec.operand0], c, func, exec.operand_size, (bool)exec.operand_sign);
                         } break;
+
                         case instruction_type::d_operand_register_all: {
                             // Implement cmp and test
                             if (exec.id >= ALU_OPERATION_COUNT) {
@@ -285,6 +286,7 @@ namespace machine {
                             auto func = alu_binary_operation[exec.id % alu_binary_operation.size()];
                             alu_op(gpr[exec.dest], gpr[exec.operand0], func, exec.operand_size, (bool)exec.operand_sign);
                         } break;
+
                         case instruction_type::d_operand_single_const: {
                             // Implement cmp and test
                             if (exec.id >= ALU_OPERATION_COUNT) {
@@ -306,36 +308,128 @@ namespace machine {
                             auto func = alu_unary_operation[exec.id % alu_unary_operation.size()];
                             alu_op(gpr[exec.dest], func, exec.operand_size, (bool)exec.operand_sign);
                         } break;
+
+                        case instruction_type::s_operand_const: {
+                            switch (exec.id) {
+                                case 0xe0: { // add %sp, #v;
+                                    sp += operand0_c;
+                                } break;
+                                case 0xe1: { // sub %sp, #v;
+                                    sp -= operand0_c;
+                                } break;
+                            }
+                        }
                     }
                 } break;
+
+                // LSU Instruction Class
                 case instruction_type::lsu: {
                     switch (get_subclass(exec)) {
                         case instruction_type::t_operand_register_all: {
                             switch (exec.id) {
-                                case 0x00: {
+                                case 0x00: { // l{b, w, d, q} %rD, %rS0, %rS1;
                                     dest_r = bus::read(operand0_r + operand1_r, decoder::get_operand_sizeof(exec.operand_size));
                                 } break;
                             }
                         } break;
-                        case instruction_type::d_operand_register_all: {
-                            switch (exec.id) {
-                                case 0x00: { dest_r = bus::read(operand0_r, decoder::get_operand_sizeof(exec.operand_size)); } break;
-                                case 0x01: { bus::write(operand0_r, dest_r, decoder::get_operand_sizeof(exec.operand_size)); } break;
-                            }
-                        } break;
-                    }
-                } break;
-                case instruction_type::bnj: {
-                    switch (get_subclass(exec)) {
-                        case instruction_type::s_operand_const: {
+
+                        case instruction_type::t_operand_single_const: {
                             switch (exec.id) {
                                 case 0x00: {
-                                    u64 v = operand0_c;
-                                    pc += (s16)mask(v, decoder::get_operand_sizeof(exec.operand_size)*8);
-                                    jump = true;
+                                    dest_r = bus::read(operand0_r + operand1_c, decoder::get_operand_sizeof(exec.operand_size));
                                 } break;
                             }
                         } break;
+
+                        case instruction_type::d_operand_register_all: {
+                            switch (exec.id) {
+                                case 0x0: { dest_r = bus::read(operand0_r, decoder::get_operand_sizeof(exec.operand_size)); } break;
+                                case 0x1: { bus::write(operand0_r, dest_r, decoder::get_operand_sizeof(exec.operand_size)); } break;
+                                case 0x2: { dest_r = operand0_r; } break;
+                            }
+                        } break;
+
+                        case instruction_type::d_operand_single_const: {
+                            // lr{b, w, d}
+                            // lrq has a special encoding
+                            switch (exec.id) {
+                                case 0x02: {
+                                    dest_r = operand0_c;
+                                } break;
+                            }
+                        } break;
+
+                        case instruction_type::s_operand_const: {
+                            switch (exec.id) {
+                                case 0xe0: { // lsp #const;
+                                    sp = operand0_c;
+                                } break;
+                            }
+                        } break;
+
+                        case instruction_type::s_operand_register: {
+                            switch (exec.id) {
+                                case 0xe0: {
+                                    sp = operand0_r;
+                                } break;
+                                case 0xd0: { // push %rD;
+                                    size_t size = decoder::get_operand_sizeof(exec.operand_size);
+                                    bus::write(sp, dest_r, size);
+                                    sp -= size;
+                                } break;
+                                case 0xd1: { // pop %rD;
+                                    size_t size = decoder::get_operand_sizeof(exec.operand_size);
+                                    sp += size;
+                                    dest_r = bus::read(sp, size);
+                                } break;
+                            }
+                        }
+                    }
+                } break;
+
+                // BNJ Instruction Class
+                case instruction_type::bnj: {
+                    jump = true;
+                    switch (get_subclass(exec)) {
+                        case instruction_type::s_operand_register: {
+                            switch (exec.id) {
+                                // b
+                                case 0x0: {
+                                    pc += (s32)mask(operand0_r, decoder::get_operand_sizeof(exec.operand_size)*8);
+                                } break;
+                                // call %rD
+                                case 0xfe: {
+                                    bus::write(sp, pc+3, 8);
+                                    sp -= 8;
+                                    pc = dest_r;
+                                } break;
+                            }
+                        }
+                        case instruction_type::s_operand_const: {
+                            switch (exec.id) {
+                                case 0x0: {
+                                    u64 v = operand0_c;
+                                    pc += (s32)mask(v, decoder::get_operand_sizeof(exec.operand_size)*8);
+                                    pc = mask(pc, decoder::get_operand_sizeof(exec.operand_size)*8);
+                                } break;
+                                // call #const
+                                case 0xfe: {
+                                    bus::write(sp, pc+3+decoder::get_operand_sizeof(exec.operand_size), 8);
+                                    sp -= 8;
+                                    pc = operand0_c;
+                                } break;
+                            }
+                        } break;
+
+                        case instruction_type::no_operand: {
+                            // ret
+                            switch (exec.id) {
+                                case 0xff: {
+                                    sp += 8;
+                                    pc = bus::read(sp, 8);
+                                } break;
+                            }
+                        }
                     }
                 } break;
             }

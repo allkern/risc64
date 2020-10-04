@@ -24,6 +24,7 @@ namespace machine {
         sf::Text str;
         sf::Font term;
         sf::Clock cursor_clk;
+        
         bool cursor_on;
         
         // r[0] -> term_char_out
@@ -38,6 +39,8 @@ namespace machine {
         // r[9] -> mouse_y
 
     public:
+        u8* get_memory() { return &registers[0]; }
+
         ioctl(u64 mmio_base, size_t scale) :
             device("Generic I/O Controller", mmio_base, 9, 2, device_access::a_rw),
             window_scale(scale) {};
@@ -89,7 +92,7 @@ namespace machine {
 #ifdef _WIN32
             term.loadFromFile("res/terminal.ttf");
 #else
-            term.loadFromFile("emulator/res/terminal.ttf");
+            term.loadFromFile("risc64/res/terminal.ttf");
 #endif
             str.setCharacterSize(20);
             str.setPosition(2, -8);

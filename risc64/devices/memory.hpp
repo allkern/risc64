@@ -26,7 +26,10 @@ namespace machine {
 		};
 #endif
 
+		u8* get_memory() { return m.data(); }
+
 		u64 read(u64 addr, size_t size) override {
+			addr -= base;
 			u64 q = 0;
             for (int off = size - 1; off >= 0; off--) {
                 q |= ((u64)m[addr+off]) << (8 * off);
@@ -35,8 +38,11 @@ namespace machine {
 		}
 
 		void write(u64 addr, u64 value, size_t size) override {
+			addr -= base;
+			size_t boff = 0;
 			for (int off = size - 1; off >= 0; off--) {
-                m[addr+off] = (value & (0xff << (off*8))) >> (off*8);
+				boff = off*8;
+                m[addr+off] = (value & (0xffull << boff)) >> boff;
             }
 		}
 	};

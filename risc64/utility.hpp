@@ -22,6 +22,13 @@ namespace machine {
             ss << std::setw(sizeof(T)*2) << std::setfill('0') << std::hex << value;
             return ss.str();
         }
+
+        template <class T> static const std::string hexnzf(T value) {
+            std::ostringstream ss;
+            ss << std::hex << value;
+            return ss.str();
+        }
+        
 #ifdef _WIN32
         // Open a file save dialog
         inline const std::string open_file_save_dialog(const std::string& str_title, const std::string& str_filter, const std::string& str_def_ext) {
@@ -32,26 +39,27 @@ namespace machine {
             file[0] = '\x0';
 
             OPENFILENAMEA ofn;
+            memset(&ofn, 0, sizeof(ofn));
             ofn.lStructSize          = sizeof(OPENFILENAMEA);
-            ofn.hwndOwner            = NULL;
-            ofn.hInstance            = NULL;
+            //ofn.hwndOwner            = NULL;
+            //ofn.hInstance            = NULL;
             ofn.lpstrFilter          = filter;
-            ofn.lpstrCustomFilter    = NULL;
-            ofn.nMaxCustFilter       = NULL;
-            ofn.nFilterIndex         = NULL;
+            //ofn.lpstrCustomFilter    = NULL;
+            //ofn.nMaxCustFilter       = NULL;
+            //ofn.nFilterIndex         = NULL;
             ofn.lpstrFile            = file;
             ofn.nMaxFile             = 500;
-            ofn.lpstrFileTitle       = NULL;
-            ofn.nMaxFileTitle        = NULL;
-            ofn.lpstrInitialDir      = NULL;
+            //ofn.lpstrFileTitle       = NULL;
+            //ofn.nMaxFileTitle        = NULL;
+            //ofn.lpstrInitialDir      = NULL;
             ofn.lpstrTitle           = title;
-            ofn.Flags                = NULL;
-            ofn.nFileOffset          = NULL;
-            ofn.nFileExtension       = NULL;
+            //ofn.Flags                = NULL;
+            //ofn.nFileOffset          = NULL;
+            //ofn.nFileExtension       = NULL;
             ofn.lpstrDefExt          = def_ext;
-            ofn.lCustData            = NULL;
-            ofn.lpfnHook             = NULL;
-            ofn.lpTemplateName       = NULL;
+            //ofn.lCustData            = NULL;
+            //ofn.lpfnHook             = NULL;
+            //ofn.lpTemplateName       = NULL;
             GetSaveFileName(&ofn);
 
             return std::string(file);

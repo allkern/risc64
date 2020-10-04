@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aliases.hpp"
+#include "../aliases.hpp"
 
 namespace machine {
     namespace decoder {
@@ -80,7 +80,7 @@ namespace machine {
         };
 
         // Map an operand_size to its actual size in bytes
-        static inline size_t get_operand_sizeof(u8 s) {
+        static inline constexpr size_t get_operand_sizeof(u8 s) {
             switch (s) {
                 case 0: return 1;
                 case 1: return 2;
@@ -105,18 +105,12 @@ namespace machine {
             if (get_class(i) == instruction_type::sys) {
                 switch (get_subclass(i)) {
                     case instruction_type::s_operand_const: {
-                        if (i.id & 0x01) {
-                            if (i.id & 0x02) {
-                                switch (i.id) {
-                                    // Special case: farj const64
-                                    // ccc1111011111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-                                    // b-------b-------b-------b-------b-------b-------b-------b-------b-------b------- 10 bytes
-                                    case 0xff: {
-                                        i.target = ((i.opcode & 0xffffffffffff0000ull) >> 0x10) | ((u64)i.ext64 << 0x30);
-                                        return 10;
-                                    }
-                                }
-                            } else {
+                        switch (i.id) {
+                            case 0xff: { // fj
+                                i.target = ((i.opcode & 0xffffffffffff0000ull) >> 0x10) | ((u64)i.ext64 << 0x30);
+                                return 10;
+                            }
+                            case 0xfe: { // lrq
                                 i.dest = (i.id & 0xf8) >> 3;
                                 i.target = ((i.opcode & 0xffffffffffff0000ull) >> 0x10) | ((u64)i.ext64 << 0x30);
                                 return 10;
@@ -164,6 +158,7 @@ namespace machine {
                     i.ext = (i.opcode & (0x3full << 0x22)) >> 0x22;
                     return 5;
                 } break;
+
                 case instruction_type::t_operand_single_const: {
                     std::size_t isz = 8, el = 0x3d;
                     u64 mask = 0xffffffff;
@@ -193,6 +188,7 @@ namespace machine {
                     i.ext = (i.opcode & (0x7ull << el)) >> el;
                     return isz;
                 } break;
+
                 case instruction_type::d_operand_register_all: {
                     // ccctttttiiiiiiiisSSdddddoooooeee
                     // b-------b-------b-------b------- 4 bytes
@@ -200,6 +196,7 @@ namespace machine {
                     i.ext = (i.opcode & (0x7ul << 0x1d)) >> 0x1d;
                     return 4;
                 } break;
+                
                 case instruction_type::d_operand_single_const: {
                     std::size_t isz = 7;
                     u64 mask = 0xffffffff;
@@ -226,11 +223,13 @@ namespace machine {
                     i.operand0 = (i.opcode & (mask << 0x18)) >> 0x18;
                     return isz;
                 } break;
+
                 case instruction_type::s_operand_register: {
                     // ccctttttiiiiiiiisSSooooo
                     // b-------b-------b------- 3 bytes
                     return 3;
                 } break;
+
                 case instruction_type::s_operand_const: {
                     std::size_t isz = 7, el = 0x33;
                     u64 mask = 0xffffffff;
@@ -256,11 +255,12 @@ namespace machine {
                     i.ext = (i.opcode & (0x1ful << el)) >> el;
                     return isz;
                 } break;
+
                 case instruction_type::no_operand: {
                     return 2;
                 }
             }
-            return 1;
+            return 0;
         }
     };
 };

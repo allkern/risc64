@@ -1,9 +1,10 @@
 .vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
 
 # Ignore compiled binaries
-compiler/assembler
-compiler/cc
+emulator/sfml
+emulator/imgui
+emulator/lgw
+compiler/
+elf/
+*.o
+*.log
