@@ -24,7 +24,7 @@ namespace machine {
         // 640x480@8-bit color
         // 320x240@16-bit color
         // Both of these video modes use around 300K of video memory
-        std::array <0x80000, u8> vram;
+        std::array <u8, 0x80000> vram;
         
         // VGA_CONTROL register:
         // m: Mode select

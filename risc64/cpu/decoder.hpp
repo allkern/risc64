@@ -6,60 +6,60 @@ namespace machine {
     namespace decoder {
         // Execution conditions
         enum condition {
-            z = 0,	// z: zero/equal (0, 0b000)
-            c,		// c: overflow/carry (1, 0b001)
-            n,		// n: negative (2, 0b010)
-            a,		// a: always (3, 0b011)
-            nv,		// nv: never (4, 0b100)
-            p,		// p/nn: not negative/positive (5, 0b101)
-            nc,		// nc: not carry/overflow (6, 0b110)
-            nz,		// nz: not zero/equal (7, 0b111)		 
+            z = 0,  // z: zero/equal (0, 0b000)
+            c,      // c: overflow/carry (1, 0b001)
+            n,      // n: negative (2, 0b010)
+            a,      // a: always (3, 0b011)
+            nv,     // nv: never (4, 0b100)
+            p,      // p/nn: not negative/positive (5, 0b101)
+            nc,     // nc: not carry/overflow (6, 0b110)
+            nz,     // nz: not zero/equal (7, 0b111)         
         };
 
         // Instruction classes and subclasses
         enum instruction_type {
-            alu = 0b00,                         // ALU (Arithmetic-Logic Unit) instruction class
-            lsu = 0b01,                         // LSU (Load-Store Unit) instruction class
-            bnj = 0b10,                         // BNJ (Branches aNd Jumps) instruction class
-            sys = 0b11,                         // SYS (SYStem) instruction class
-            t_operand_register_all 	= 0b00000, // <ins> <r0> <r1> <r2>
-            t_operand_single_const 	= 0b00100, // <ins> <r0> <r1> <const>
-            d_operand_register_all 	= 0b01000, // <ins> <r0> <r1>
-            d_operand_single_const 	= 0b01100, // <ins> <r0> <const>
-            d_operand_double_const 	= 0b10000, // <ins> <const> <const>
-            s_operand_register 		= 0b10100, // <ins> <r0>
-            s_operand_const			= 0b11000, // <ins> <const>
-            no_operand				= 0b11100, // <ins>
+            alu = 0b00,                           // ALU (Arithmetic-Logic Unit) instruction class
+            lsu = 0b01,                           // LSU (Load-Store Unit) instruction class
+            bnj = 0b10,                           // BNJ (Branches aNd Jumps) instruction class
+            sys = 0b11,                           // SYS (SYStem) instruction class
+            t_operand_register_all     = 0b00000, // <ins> <r0> <r1> <r2>
+            t_operand_single_const     = 0b00100, // <ins> <r0> <r1> <const>
+            d_operand_register_all     = 0b01000, // <ins> <r0> <r1>
+            d_operand_single_const     = 0b01100, // <ins> <r0> <const>
+            d_operand_double_const     = 0b10000, // <ins> <const> <const>
+            s_operand_register         = 0b10100, // <ins> <r0>
+            s_operand_const            = 0b11000, // <ins> <const>
+            no_operand                = 0b11100,  // <ins>
         };
 
         // Operand sizes
         enum operand_size {
-            hw = 0b00,         // 8-bit halfword (byte)
-            w  = 0b01,         // 16-bit word
-            dw = 0b10,         // 32-bit doubleword
-            qw = 0b11          // 64-bit quadword
+            hw = 0b00,  // 8-bit halfword (byte)
+            w  = 0b01,  // 16-bit word
+            dw = 0b10,  // 32-bit doubleword
+            qw = 0b11   // 64-bit quadword
         };
 
         // Models an instruction
         struct instruction {
-            u64 	opcode = 0, target = 0;
-            u8		id = 0,
+            u64     opcode = 0, target = 0;
+            u8        id = 0,
             #ifdef _WIN32
-                    type 			: 5,
-                    cond 			: 3,
-                    operand_size 	: 2,
-                    dest			: 5;
+                    type             : 5,
+                    cond             : 3,
+                    operand_size     : 2,
+                    dest             : 5;
             #else
-                    type 			: 5,
-                    cond 			: 3,
-                    operand_size 	: 2,
-                    dest			: 5;
+                    type             : 5,
+                    cond             : 3,
+                    operand_size     : 2,
+                    dest             : 5;
             #endif
             u16     ext64 = 0;
-            u32		operand0 = 0,
+            u32     operand0 = 0,
                     operand1 = 0,
                     ext = 0;
-            bool 	operand_sign = 0;
+            bool    operand_sign = 0;
 
             // Reset execution state
             inline void reset() {

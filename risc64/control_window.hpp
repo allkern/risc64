@@ -22,7 +22,7 @@
 
 namespace machine {
     class control_window : public lgw::threaded_window {
-	    sf::Clock delta;
+        sf::Clock delta;
 
         machine::dev_memory_t* memory = nullptr;
         machine::cpu* cpu     = nullptr;
@@ -157,7 +157,7 @@ namespace machine {
         inline void memory_panel() {
             using namespace ImGui;
 
-			static int item = 0;
+            static int item = 0;
             static memory_editor editor;
 
             #define memory_editor_window(t, px, py, sx, sy, c, sz, b) \
@@ -181,30 +181,30 @@ namespace machine {
                     } \
                 End();
 
-			switch (item) {
-				case 0: {
+            switch (item) {
+                case 0: {
                     memory_editor_window(device_names[item], 750, 0, 600, 600, bios->get_binary().data(), bios->get_size(), bios->get_base());
                 } break;
-				case 1: {
+                case 1: {
                     memory_editor_window(device_names[item], 750, 0, 600, 600, ioctl->get_memory(), ioctl->get_size(), ioctl->get_base());
                 } break;
-				case 2: {
+                case 2: {
                     memory_editor_window(device_names[item], 750, 0, 600, 600, memory->get_memory(), memory->get_size(), memory->get_base());
                 } break;
-			}
+            }
         }
 
     protected:
-	    void on_event(sf::Event& event) override {
-		    ImGui::SFML::ProcessEvent(event);
-	    }
+        void on_event(sf::Event& event) override {
+            ImGui::SFML::ProcessEvent(event);
+        }
 
-	    void setup() override {
+        void setup() override {
             ImGui::CreateContext();
             ImGui::SFML::Init(*get_window());
         }
 
-	    void draw() override {
+        void draw() override {
             using namespace ImGui;
             auto w = get_window();
             ImGui::SFML::Update(*w, delta.restart());

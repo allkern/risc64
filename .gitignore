@@ -1,10 +1,9 @@
 .vscode/*
 
 # Ignore compiled binaries
-emulator/sfml
-emulator/imgui
-emulator/lgw
-compiler/
+risc64/sfml/ 
+risc64/imgui/
+risc64/lgw/
 elf/
 *.o
 *.log

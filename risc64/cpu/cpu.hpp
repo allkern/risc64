@@ -31,7 +31,7 @@
 #define operand1_c this->exec.operand1
 
 namespace machine {
-	// Debug only
+    // Debug only
     template <class T> std::string bin(T v) {
         std::string s;
         for (int b = (sizeof(T) * 8) - 1; b >= 0; b--) {
@@ -69,14 +69,14 @@ namespace machine {
         // Thread-local register
         std::atomic<u64>* tlr = nullptr;
 
-		// Program Counter
+        // Program Counter
         u64 pc = 0ull;
 
         // Stack Pointer
-		u64 sp = 0ull;
+        u64 sp = 0ull;
 
-		// Status Register
-		u16 sr = 0ull;
+        // Status Register
+        u16 sr = 0ull;
 
         // PC Increment
         size_t pci = 0;

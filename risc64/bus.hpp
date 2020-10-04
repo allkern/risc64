@@ -13,10 +13,10 @@
 #define BUS_MAX_DEVICES 20
 
 namespace machine {
-	namespace bus {
+    namespace bus {
         size_t hid_count = 0;
 
-		std::vector <machine::device*> devices;
+        std::vector <machine::device*> devices;
 
         inline u64 read(u64 addr, size_t size) {
             for (auto d : devices) {
@@ -64,5 +64,5 @@ namespace machine {
         void init() {
             devices.reserve(BUS_MAX_DEVICES);
         }
-	};
+    };
 };

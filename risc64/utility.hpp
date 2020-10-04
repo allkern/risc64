@@ -9,7 +9,7 @@
 #endif
 
 namespace machine {
-	namespace utility {
+    namespace utility {
         // Round a float to 1 decimal place
         float round(float var) { 
             float value = (int)(var * 10 + .5); 
@@ -17,7 +17,7 @@ namespace machine {
         }
 
         // Get a zero-filled hexadecimal representation of value
-		template <class T> static const std::string hex(T value) {
+        template <class T> static const std::string hex(T value) {
             std::ostringstream ss;
             ss << std::setw(sizeof(T)*2) << std::setfill('0') << std::hex << value;
             return ss.str();
@@ -65,5 +65,5 @@ namespace machine {
             return std::string(file);
         }
 #endif
-	}
+    }
 }
